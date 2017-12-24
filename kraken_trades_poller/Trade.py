@@ -12,6 +12,5 @@ def init_index(es_index: str):
 class Trade(DocType):
     pair = Keyword()
     price = Float()
-    tags = Keyword()
     timestamp_transaction = Date()
     volume = Float()
