@@ -22,6 +22,7 @@ class Poller(object):
         while True:
             trade_counter = Counter()
             kraken.load_markets()
+            print([symbol for symbol in kraken.markets])
             for symbol in kraken.markets:
                 time.sleep(kraken.rateLimit / 1000)  # time.sleep wants seconds
                 for trade in kraken.fetch_trades(symbol, since=self.get_last_transaction(symbol=symbol)):
@@ -32,6 +33,7 @@ class Poller(object):
                     es_trade.save()
                     trade_counter.update([symbol])
                     self.update_last_transaction(timestamp=trade['timestamp'], symbol=symbol)
+                print('{} Done'.format(symbol))
             print(trade_counter)
             time.sleep(60*5)
 
