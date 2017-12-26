@@ -23,8 +23,9 @@ class Kraken(object):
             last_transaction_timestamp = self.get_last_transaction(symbol=symbol)
             try:
                 trades[symbol] = self.market.fetch_trades(symbol, since=last_transaction_timestamp)
+                LOGGER.info(f"fetched {symbol}")
             except ExchangeError as e:
-                LOGGER.error("Error for symbol {} : {}".format(symbol, str(e)))
+                LOGGER.error(f"Error for symbol {symbol} : {str(e)}")
                 continue
         return trades
 
