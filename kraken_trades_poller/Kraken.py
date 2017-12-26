@@ -4,7 +4,7 @@ from collections import Counter
 from typing import List, Optional, Tuple, Dict
 
 import ccxt
-from ccxt import ExchangeError, ExchangeNotAvailable
+from ccxt import ExchangeError, ExchangeNotAvailable, RequestTimeout
 from elasticsearch_dsl import Search
 from retrying import retry
 
@@ -12,7 +12,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 def retry_if_not_available(exception):
-    return isinstance(exception, ExchangeNotAvailable)
+    for error in [ExchangeNotAvailable, RequestTimeout]:
+        if isinstance(exception, error):
+            return True
+    return False
 
 
 class Kraken(object):
