@@ -4,43 +4,68 @@ from collections import Counter
 from typing import List, Dict, Optional
 
 import ccxt
-from ccxt import ExchangeError
+from ccxt import ExchangeError, ExchangeNotAvailable
+from retrying import retry
 
 LOGGER = logging.getLogger(__name__)
 
 
+def retry_if_not_available(exception):
+    return isinstance(exception, ExchangeNotAvailable)
+
+
 class Kraken(object):
     def __init__(self):
-        self.last_transaction = self.init_last_transaction()
+        self.last_transaction = self._init_last_transaction()
         self.doc_count = Counter()
         self.market = ccxt.kraken()
         self.market.load_markets()
 
     def get_trades(self) -> Dict[str, List[dict]]:
         trades = {}
-        for symbol in self.market.markets:
+        symbols = self._get_symbols()
+        for symbol in symbols:
             time.sleep(self.market.rateLimit / 1000)  # time.sleep wants seconds
-            last_transaction_timestamp = self.get_last_transaction(symbol=symbol)
+            last_transaction_timestamp = self._get_last_transaction(symbol=symbol)
             try:
-                trades[symbol] = self.market.fetch_trades(symbol, since=last_transaction_timestamp)
+                trades[symbol] = self._safe_fetch_trades(symbol=symbol, since=last_transaction_timestamp)
+                self._update_last_transaction(symbol=symbol, trades=trades[symbol])
                 LOGGER.info(f"fetched {symbol}")
             except ExchangeError as e:
                 LOGGER.error(f"Error for symbol {symbol} : {str(e)}")
                 continue
         return trades
 
-    def update_last_transaction(self, timestamp: int, symbol: str):
-        if symbol in self.last_transaction:
-            if timestamp < self.last_transaction[symbol]:
-                self.last_transaction[symbol] = timestamp
-        else:
-            self.last_transaction[symbol] = timestamp
+    @retry(wait_exponential_multiplier=1000, wait_exponential_max=30000, retry_on_exception=retry_if_not_available)
+    def _safe_fetch_trades(self, symbol: str, since: int) -> List[dict]:
+        try:
+            return self.market.fetch_trades(symbol, since=since)
+        except ExchangeNotAvailable as e:
+            LOGGER.error(f"Exchange not available : {str(e)}")
+            LOGGER.error("Retry in a few seconds...")
+            raise e
 
-    def get_last_transaction(self, symbol: str) -> Optional[int]:
+    def _update_last_transaction(self, symbol: str, trades: List[dict]):
+        for trade in trades:
+            if symbol in self.last_transaction:
+                if trade['timestamp'] < self.last_transaction[symbol]:
+                    self.last_transaction[symbol] = trade['timestamp']
+            else:
+                self.last_transaction[symbol] = trade['timestamp']
+
+    def _get_last_transaction(self, symbol: str) -> Optional[int]:
         if symbol in self.last_transaction:
             return self.last_transaction[symbol]
         else:
             return None
 
-    def init_last_transaction(self) -> dict:
+    def _init_last_transaction(self) -> dict:
         return {}
+
+    def _get_symbols(self) -> List[str]:
+        filtered = []
+        for symbol in self.market.symbols:
+            for must_filter in ['EUR', 'USD']:
+                if must_filter in symbol:
+                    filtered.append(symbol)
+        return filtered
