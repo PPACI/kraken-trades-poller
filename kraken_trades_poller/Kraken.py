@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import Counter
-from typing import List, Dict, Optional
+from typing import List, Optional, Tuple, Dict
 
 import ccxt
 from ccxt import ExchangeError, ExchangeNotAvailable
@@ -17,11 +17,11 @@ def retry_if_not_available(exception):
 class Kraken(object):
     def __init__(self):
         self.last_transaction = self._init_last_transaction()
-        self.doc_count = Counter()
         self.market = ccxt.kraken()
         self.market.load_markets()
 
-    def get_trades(self) -> Dict[str, List[dict]]:
+    def get_trades(self) -> Tuple[Dict[str, List[dict]], Counter]:
+        trades_count = Counter()
         trades = {}
         symbols = self._get_symbols()
         for symbol in symbols:
@@ -30,11 +30,12 @@ class Kraken(object):
             try:
                 trades[symbol] = self._safe_fetch_trades(symbol=symbol, since=last_transaction_timestamp)
                 self._update_last_transaction(symbol=symbol, trades=trades[symbol])
+                trades_count.update({symbol: len(trades[symbol])})
                 LOGGER.info(f"fetched {symbol}")
             except ExchangeError as e:
                 LOGGER.error(f"Error for symbol {symbol} : {str(e)}")
                 continue
-        return trades
+        return trades, trades_count
 
     @retry(wait_exponential_multiplier=1000, wait_exponential_max=30000, retry_on_exception=retry_if_not_available)
     def _safe_fetch_trades(self, symbol: str, since: int) -> List[dict]:

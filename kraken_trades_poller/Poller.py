@@ -1,14 +1,16 @@
+import logging
 import time
 from datetime import date
-from typing import List, Optional, Counter
+from typing import List
 
-import ccxt
 import elasticsearch.helpers
-from ccxt import ExchangeError
 from elasticsearch_dsl.connections import connections
 
+from kraken_trades_poller.Kraken import Kraken
 from kraken_trades_poller.Trade import Trade
 from .Trade import init_index
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Poller(object):
@@ -17,34 +19,23 @@ class Poller(object):
         es_index = es_index + '-{}.{}'.format(today.year, today.month)
         connections.create_connection(hosts=es_host)
         init_index(es_index=es_index)
-
+        self.kraken_client = Kraken()
 
     def start_loop(self):
-        kraken = ccxt.kraken()
         while True:
-            bulk_docs = []
-            trade_counter = Counter()
-            kraken.load_markets()
-            eur_usd_market = [symbol for symbol in kraken.markets if 'EUR' in symbol or 'USD' in symbol]
-            print(eur_usd_market)
-            for symbol in eur_usd_market:
+            bulk_trades = []
+            trades_dict, stats = self.kraken_client.get_trades()
+            for symbol, trades in trades_dict.items():
+                for trade in trades:
+                    es_trade = Trade(pair=symbol,
+                                     price=trade['price'],
+                                     timestamp_transaction=trade['datetime'],
+                                     volume=trade['amount'])
+                    bulk_trades.append(es_trade.to_dict(include_meta=True))
 
-                try:
-                    for trade in kraken.fetch_trades(symbol, since=self.get_last_transaction(symbol=symbol)):
-                        es_trade = Trade(pair=symbol,
-                                         price=trade['price'],
-                                         timestamp_transaction=trade['datetime'],
-                                         volume=trade['amount'])
-                        bulk_docs.append(es_trade.to_dict(include_meta=True))
-                        trade_counter.update([symbol])
-                        self.update_last_transaction(timestamp=trade['timestamp'], symbol=symbol)
-                    print('{} Done'.format(symbol))
-                except ExchangeError as e:
-                    print("problem with {}".format(symbol))
-                    continue
-            print('Now Indexing')
-            elasticsearch.helpers.bulk(client=connections.get_connection(), actions=bulk_docs, max_retries=3)
-            print(trade_counter)
+            LOGGER.info(f"Sending bulk index : {len(bulk_trades)} items to index")
+            elasticsearch.helpers.bulk(client=connections.get_connection(), actions=bulk_trades, max_retries=3)
+            LOGGER.info("Indexation done. Indexation stats :")
+            LOGGER.info(stats)
+            LOGGER.info("Will now sleep for 5 minutes")
             time.sleep(60 * 5)
-
-
