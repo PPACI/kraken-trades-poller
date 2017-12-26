@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple, Dict
 
 import ccxt
 from ccxt import ExchangeError, ExchangeNotAvailable
+from elasticsearch_dsl import Search
 from retrying import retry
 
 LOGGER = logging.getLogger(__name__)
@@ -60,8 +61,16 @@ class Kraken(object):
         else:
             return None
 
-    def _init_last_transaction(self) -> dict:
-        return {}
+    @staticmethod
+    def _init_last_transaction() -> dict:
+        s = Search()
+        s.aggs.bucket('pairs', 'terms', field='pair') \
+            .metric('most_recent', 'max', field='timestamp_transaction')
+        r = s.execute()
+        last_transaction = {}
+        for pair in r.aggs.pairs:
+            last_transaction[pair.key] = int(pair.most_recent.value)
+        return last_transaction
 
     def _get_symbols(self) -> List[str]:
         filtered = []
