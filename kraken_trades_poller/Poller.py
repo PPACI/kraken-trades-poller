@@ -17,8 +17,7 @@ class Poller(object):
         es_index = es_index + '-{}.{}'.format(today.year, today.month)
         connections.create_connection(hosts=es_host)
         init_index(es_index=es_index)
-        self.last_transaction = {}
-        self.doc_count = Counter()
+
 
     def start_loop(self):
         kraken = ccxt.kraken()
@@ -29,7 +28,7 @@ class Poller(object):
             eur_usd_market = [symbol for symbol in kraken.markets if 'EUR' in symbol or 'USD' in symbol]
             print(eur_usd_market)
             for symbol in eur_usd_market:
-                time.sleep(kraken.rateLimit / 1000)  # time.sleep wants seconds
+
                 try:
                     for trade in kraken.fetch_trades(symbol, since=self.get_last_transaction(symbol=symbol)):
                         es_trade = Trade(pair=symbol,
@@ -48,15 +47,4 @@ class Poller(object):
             print(trade_counter)
             time.sleep(60 * 5)
 
-    def update_last_transaction(self, timestamp: int, symbol: str):
-        if symbol in self.last_transaction:
-            if timestamp < self.last_transaction[symbol]:
-                self.last_transaction[symbol] = timestamp
-        else:
-            self.last_transaction[symbol] = timestamp
 
-    def get_last_transaction(self, symbol: str) -> Optional[int]:
-        if symbol in self.last_transaction:
-            return self.last_transaction[symbol]
-        else:
-            return None
