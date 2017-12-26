@@ -63,13 +63,13 @@ class Kraken(object):
 
     @staticmethod
     def _init_last_transaction() -> dict:
-        s = Search()
+        s = Search().filter('range', timestamp_transaction={'lte':'now'})
         s.aggs.bucket('pairs', 'terms', field='pair') \
             .metric('most_recent', 'max', field='timestamp_transaction')
         r = s.execute()
         last_transaction = {}
         for pair in r.aggs.pairs:
-            last_transaction[pair.key] = int(pair.most_recent.value)
+            last_transaction[pair.key] = pair.most_recent.value / 1000
         return last_transaction
 
     def _get_symbols(self) -> List[str]:
