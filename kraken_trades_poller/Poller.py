@@ -1,6 +1,5 @@
 import logging
 import time
-from datetime import date
 from typing import List
 
 import elasticsearch.helpers
@@ -15,14 +14,13 @@ LOGGER = logging.getLogger(__name__)
 
 class Poller(object):
     def __init__(self, es_host: List[str], es_index: str):
-        today = date.today()
-        es_index = es_index + '-{}.{}'.format(today.year, today.month)
         connections.create_connection(hosts=es_host)
-        init_index(es_index=es_index)
+        self.es_index = es_index
         self.kraken_client = Kraken()
 
     def start_loop(self):
         while True:
+            init_index(es_index=self.es_index)
             bulk_trades = []
             trades_dict, stats = self.kraken_client.get_trades()
             for symbol, trades in trades_dict.items():
